@@ -41,6 +41,7 @@ header .sub{font-size:11px;opacity:.7;margin-top:2px}
 .chip.cl{background:var(--cl-l);color:var(--cl);border-color:var(--cl-l)}
 .chip.cl.active{border-color:var(--cl);background:var(--cl);color:#fff}
 select{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;color:var(--text)}
+.chip:not(.active){opacity:.35}
 
 /* TABS */
 .tabs-nav{background:#fff;border-bottom:2px solid var(--border);padding:0 24px;display:flex;gap:0;position:sticky;top:97px;z-index:198}
@@ -268,6 +269,10 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
       </div>
     </div>
     <div class="fg" id="prod-wh-filters" style="gap:6px;align-items:center;flex-wrap:wrap"></div>
+  </div>
+  <div class="chart-card" style="margin-bottom:16px">
+    <h3>Tendencia Mensual — Uds/Hr promedio</h3>
+    <div class="chart-wrap"><canvas id="chartProd"></canvas></div>
   </div>
   <div id="prod-content"></div>
 </div>
@@ -1006,56 +1011,104 @@ function renderProductividad() {
     return;
   }
 
-  var html = '<div style="font-size:11px;color:var(--muted);margin-bottom:16px">Calculado al: ' + generated + '</div>';
+  // Tabla plana — un operario por fila, con columna Bodega
+  var byKey = {};
+  rows.forEach(function(r) {
+    var wh = r.warehouse_name || String(r.warehouse_id);
+    var key = r.picker_name + '||' + wh;
+    if (!byKey[key]) byKey[key] = {picker_name: r.picker_name, wh_name: wh, picks:0, picks_uds:0, packs:0, packs_uds:0, hours:0};
+    var o = byKey[key];
+    o.picks += r.picks; o.picks_uds += r.picks_uds;
+    o.packs += r.packs; o.packs_uds += r.packs_uds;
+    o.hours += r.hours;
+  });
+  var tableRows = Object.keys(byKey).map(function(k) {
+    var v = byKey[k];
+    return {picker_name: v.picker_name, wh_name: v.wh_name,
+            picks: v.picks, picks_uds: v.picks_uds,
+            packs: v.packs, packs_uds: v.packs_uds, hours: v.hours,
+            picks_uph: v.hours > 0 ? +(v.picks_uds / v.hours).toFixed(1) : 0,
+            packs_uph: v.hours > 0 ? +(v.packs_uds / v.hours).toFixed(1) : 0};
+  }).sort(function(a, b) { return b.picks_uph - a.picks_uph; });
 
-  // Lista de bodegas a mostrar
-  var whsToShow = (prodWhList.length > 0)
-    ? prodWhList.filter(function(w) { return !filterWh || activeProdWh.has(w); })
-    : Object.keys(rows.reduce(function(acc,r){ acc[r.warehouse_name||String(r.warehouse_id)]=1; return acc; },{})).sort();
-
-  whsToShow.forEach(function(wh) {
-    var whData = rows.filter(function(r) { return (r.warehouse_name || String(r.warehouse_id)) === wh; });
-    if (!whData.length) return;
-
-    var byOp = {};
-    whData.forEach(function(r) {
-      if (!byOp[r.picker_name]) byOp[r.picker_name] = {picks:0,picks_uds:0,packs:0,packs_uds:0,hours:0};
-      var o = byOp[r.picker_name];
-      o.picks += r.picks; o.picks_uds += r.picks_uds;
-      o.packs += r.packs; o.packs_uds += r.packs_uds;
-      o.hours += r.hours;
-    });
-    var whRows = Object.keys(byOp).map(function(name) {
-      var v = byOp[name];
-      return { picker_name:name, picks:v.picks, picks_uds:v.picks_uds,
-               packs:v.packs, packs_uds:v.packs_uds, hours:v.hours,
-               picks_uph: v.hours>0 ? +(v.picks_uds/v.hours).toFixed(1) : 0,
-               packs_uph: v.hours>0 ? +(v.packs_uds/v.hours).toFixed(1) : 0 };
-    }).sort(function(a,b){ return b.picks_uph - a.picks_uph; });
-
-    var totPk=0,totPkU=0,totPa=0,totPaU=0,totH=0;
-    whRows.forEach(function(r){ totPk+=r.picks; totPkU+=r.picks_uds; totPa+=r.packs; totPaU+=r.packs_uds; totH+=r.hours; });
-
-    html += '<div class="prod-wh-title">' + wh + '</div>';
-    html += '<div class="tbl-wrap" style="margin-bottom:20px"><table class="prod"><thead><tr>';
-    html += '<th style="text-align:left">Operario</th><th>Ped. Pick</th><th>Uds Pick</th><th>Pick Uds/Hr</th><th>Ped. Pack</th><th>Uds Pack</th><th>Pack Uds/Hr</th><th>Horas</th>';
-    html += '</tr></thead><tbody>';
-
-    whRows.forEach(function(r) {
-      html += '<tr><td>' + r.picker_name + '</td><td>' + fmt(r.picks) + '</td><td>' + fmt(r.picks_uds) + '</td>';
-      html += '<td class="prod-uph">' + r.picks_uph + '</td><td>' + fmt(r.packs) + '</td><td>' + fmt(r.packs_uds) + '</td>';
-      html += '<td class="prod-uph">' + r.packs_uph + '</td><td>' + r.hours.toFixed(1) + '</td></tr>';
-    });
-
-    var tPkUph = totH>0 ? (totPkU/totH).toFixed(1) : '0';
-    var tPaUph = totH>0 ? (totPaU/totH).toFixed(1) : '0';
-    html += '<tr class="prod-total"><td>TOTAL ' + wh + '</td><td>' + fmt(totPk) + '</td><td>' + fmt(totPkU) + '</td>';
-    html += '<td class="prod-uph">' + tPkUph + '</td><td>' + fmt(totPa) + '</td><td>' + fmt(totPaU) + '</td>';
-    html += '<td class="prod-uph">' + tPaUph + '</td><td>' + totH.toFixed(1) + '</td></tr>';
-    html += '</tbody></table></div>';
+  var totPk=0, totPkU=0, totPa=0, totPaU=0, totH=0;
+  tableRows.forEach(function(r) {
+    totPk += r.picks; totPkU += r.picks_uds;
+    totPa += r.packs; totPaU += r.packs_uds; totH += r.hours;
   });
 
+  var html = '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Calculado al: ' + generated + '</div>';
+  html += '<div class="tbl-wrap"><table class="prod"><thead><tr>';
+  html += '<th style="text-align:left">Operario</th><th style="text-align:left">Bodega</th>';
+  html += '<th>Ped. Pick</th><th>Uds Pick</th><th>Pick Uds/Hr</th>';
+  html += '<th>Ped. Pack</th><th>Uds Pack</th><th>Pack Uds/Hr</th><th>Horas</th>';
+  html += '</tr></thead><tbody>';
+  tableRows.forEach(function(r) {
+    html += '<tr><td style="text-align:left">' + r.picker_name + '</td><td style="text-align:left">' + r.wh_name + '</td>';
+    html += '<td>' + fmt(r.picks) + '</td><td>' + fmt(r.picks_uds) + '</td>';
+    html += '<td class="prod-uph">' + r.picks_uph + '</td>';
+    html += '<td>' + fmt(r.packs) + '</td><td>' + fmt(r.packs_uds) + '</td>';
+    html += '<td class="prod-uph">' + r.packs_uph + '</td>';
+    html += '<td>' + r.hours.toFixed(1) + '</td></tr>';
+  });
+  var tPkUph = totH > 0 ? (totPkU / totH).toFixed(1) : '0';
+  var tPaUph = totH > 0 ? (totPaU / totH).toFixed(1) : '0';
+  html += '<tr class="prod-total"><td style="text-align:left">TOTAL</td><td></td>';
+  html += '<td>' + fmt(totPk) + '</td><td>' + fmt(totPkU) + '</td>';
+  html += '<td class="prod-uph">' + tPkUph + '</td>';
+  html += '<td>' + fmt(totPa) + '</td><td>' + fmt(totPaU) + '</td>';
+  html += '<td class="prod-uph">' + tPaUph + '</td>';
+  html += '<td>' + totH.toFixed(1) + '</td></tr></tbody></table></div>';
+
   content.innerHTML = html;
+  renderProdTrendChart(prodData);
+}
+
+function renderProdTrendChart(prodData) {
+  destroyChart('prod');
+  var sortedMonths = Object.keys(prodData).sort();
+  if (!sortedMonths.length) return;
+  var labels = sortedMonths.map(mLabel);
+
+  function calcUph(m, field) {
+    var data = (prodData[m] && prodData[m].data) ? prodData[m].data : [];
+    var totalUds = 0, totalH = 0;
+    data.forEach(function(r) {
+      var shiftOk = activeProdShifts.has(r.shift || 'Turno Diurno Semana');
+      var whKey = r.warehouse_name || String(r.warehouse_id);
+      var whOk = activeProdWh.size === 0 || activeProdWh.has(whKey);
+      if (shiftOk && whOk) { totalUds += r[field]; totalH += r.hours; }
+    });
+    return totalH > 0 ? +(totalUds / totalH).toFixed(1) : null;
+  }
+
+  var pickUphData = sortedMonths.map(function(m) { return calcUph(m, 'picks_uds'); });
+  var packUphData = sortedMonths.map(function(m) { return calcUph(m, 'packs_uds'); });
+
+  var ctx = document.getElementById('chartProd');
+  if (!ctx) return;
+  charts.prod = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: {labels: labels, datasets: [
+      {label: 'Pick Uds/Hr', data: pickUphData,
+       borderColor: '#2E75B6', backgroundColor: 'rgba(46,117,182,.12)',
+       borderWidth: 2, pointRadius: 4, tension: .3, fill: false},
+      {label: 'Pack Uds/Hr', data: packUphData,
+       borderColor: '#C55A11', backgroundColor: 'rgba(197,90,17,.12)',
+       borderWidth: 2, pointRadius: 4, tension: .3, fill: false}
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {position: 'top', labels: {boxWidth: 12, font: {size: 11}}},
+        tooltip: {callbacks: {label: function(c) { return c.dataset.label + ': ' + c.raw + ' uds/hr'; }}}
+      },
+      scales: {
+        x: {ticks: {font: {size: 10}}},
+        y: {beginAtZero: false, ticks: {font: {size: 10}, callback: function(v) { return v + ' u/h'; }}}
+      }
+    }
+  });
 }
 </script>
 </body>
