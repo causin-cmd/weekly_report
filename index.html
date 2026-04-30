@@ -989,6 +989,9 @@ function renderProductividad() {
   var content = document.getElementById('prod-content');
   if (!content) return;
 
+  // Siempre renderizar el grafico de tendencia, independiente de los filtros
+  renderProdTrendChart(prodData);
+
   if (!month || !prodData[month] || !prodData[month].data || !prodData[month].data.length) {
     content.innerHTML = '<div style="padding:30px;color:var(--muted);text-align:center;font-size:13px">Sin datos de productividad para este periodo.<br><span style="font-size:11px">Verifica que gmail_config.json esta configurado y que llegaron los correos.</span></div>';
     return;
@@ -997,7 +1000,6 @@ function renderProductividad() {
   var allRows = prodData[month].data;
   var generated = prodData[month].generated || '';
 
-  // Si activeProdWh esta vacio (aun no inicializado), mostrar todo
   var filterWh = activeProdWh.size > 0;
   var rows = allRows.filter(function(r) {
     var shiftOk = activeProdShifts.has(r.shift || 'Turno Diurno Semana');
@@ -1011,7 +1013,7 @@ function renderProductividad() {
     return;
   }
 
-  // Tabla plana — un operario por fila, con columna Bodega
+  // Tabla plana con columna Bodega
   var byKey = {};
   rows.forEach(function(r) {
     var wh = r.warehouse_name || String(r.warehouse_id);
@@ -1024,12 +1026,16 @@ function renderProductividad() {
   });
   var tableRows = Object.keys(byKey).map(function(k) {
     var v = byKey[k];
+    var pkUph = v.hours > 0 ? +(v.picks_uds / v.hours).toFixed(1) : 0;
+    var paUph = v.hours > 0 ? +(v.packs_uds / v.hours).toFixed(1) : 0;
     return {picker_name: v.picker_name, wh_name: v.wh_name,
             picks: v.picks, picks_uds: v.picks_uds,
             packs: v.packs, packs_uds: v.packs_uds, hours: v.hours,
-            picks_uph: v.hours > 0 ? +(v.picks_uds / v.hours).toFixed(1) : 0,
-            packs_uph: v.hours > 0 ? +(v.packs_uds / v.hours).toFixed(1) : 0};
-  }).sort(function(a, b) { return b.picks_uph - a.picks_uph; });
+            picks_uph: pkUph, packs_uph: paUph,
+            picks_phr: v.hours > 0 ? +(v.picks / v.hours).toFixed(1) : 0,
+            packs_phr: v.hours > 0 ? +(v.packs / v.hours).toFixed(1) : 0,
+            prod_hr: +((pkUph + paUph) / 2).toFixed(1)};
+  }).sort(function(a, b) { return b.prod_hr - a.prod_hr; });
 
   var totPk=0, totPkU=0, totPa=0, totPaU=0, totH=0;
   tableRows.forEach(function(r) {
@@ -1040,28 +1046,33 @@ function renderProductividad() {
   var html = '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Calculado al: ' + generated + '</div>';
   html += '<div class="tbl-wrap"><table class="prod"><thead><tr>';
   html += '<th style="text-align:left">Operario</th><th style="text-align:left">Bodega</th>';
-  html += '<th>Ped. Pick</th><th>Uds Pick</th><th>Pick Uds/Hr</th>';
-  html += '<th>Ped. Pack</th><th>Uds Pack</th><th>Pack Uds/Hr</th><th>Horas</th>';
+  html += '<th>Ped Pick</th><th>Uds Pick</th><th>Uds/Hr Pick</th><th>Ped/Hr Pick</th>';
+  html += '<th>Ped Pack</th><th>Uds Pack</th><th>Uds/Hr Pack</th><th>Ped/Hr Pack</th>';
+  html += '<th>Prod/Hr</th><th>Horas</th>';
   html += '</tr></thead><tbody>';
   tableRows.forEach(function(r) {
     html += '<tr><td style="text-align:left">' + r.picker_name + '</td><td style="text-align:left">' + r.wh_name + '</td>';
     html += '<td>' + fmt(r.picks) + '</td><td>' + fmt(r.picks_uds) + '</td>';
-    html += '<td class="prod-uph">' + r.picks_uph + '</td>';
+    html += '<td class="prod-uph">' + r.picks_uph + '</td><td>' + r.picks_phr + '</td>';
     html += '<td>' + fmt(r.packs) + '</td><td>' + fmt(r.packs_uds) + '</td>';
-    html += '<td class="prod-uph">' + r.packs_uph + '</td>';
+    html += '<td class="prod-uph">' + r.packs_uph + '</td><td>' + r.packs_phr + '</td>';
+    html += '<td class="prod-uph" style="background:var(--cl-l)">' + r.prod_hr + '</td>';
     html += '<td>' + r.hours.toFixed(1) + '</td></tr>';
   });
   var tPkUph = totH > 0 ? (totPkU / totH).toFixed(1) : '0';
   var tPaUph = totH > 0 ? (totPaU / totH).toFixed(1) : '0';
+  var tPkPhr = totH > 0 ? (totPk / totH).toFixed(1) : '0';
+  var tPaPhr = totH > 0 ? (totPa / totH).toFixed(1) : '0';
+  var tProd  = ((parseFloat(tPkUph) + parseFloat(tPaUph)) / 2).toFixed(1);
   html += '<tr class="prod-total"><td style="text-align:left">TOTAL</td><td></td>';
   html += '<td>' + fmt(totPk) + '</td><td>' + fmt(totPkU) + '</td>';
-  html += '<td class="prod-uph">' + tPkUph + '</td>';
+  html += '<td class="prod-uph">' + tPkUph + '</td><td>' + tPkPhr + '</td>';
   html += '<td>' + fmt(totPa) + '</td><td>' + fmt(totPaU) + '</td>';
-  html += '<td class="prod-uph">' + tPaUph + '</td>';
+  html += '<td class="prod-uph">' + tPaUph + '</td><td>' + tPaPhr + '</td>';
+  html += '<td class="prod-uph" style="background:var(--cl-l)">' + tProd + '</td>';
   html += '<td>' + totH.toFixed(1) + '</td></tr></tbody></table></div>';
 
   content.innerHTML = html;
-  renderProdTrendChart(prodData);
 }
 
 function renderProdTrendChart(prodData) {
@@ -1084,28 +1095,33 @@ function renderProdTrendChart(prodData) {
 
   var pickUphData = sortedMonths.map(function(m) { return calcUph(m, 'picks_uds'); });
   var packUphData = sortedMonths.map(function(m) { return calcUph(m, 'packs_uds'); });
+  var prodHrData  = sortedMonths.map(function(m, i) {
+    var pk = pickUphData[i]; var pa = packUphData[i];
+    return (pk !== null || pa !== null) ? +((( pk || 0) + (pa || 0)) / 2).toFixed(1) : null;
+  });
 
   var ctx = document.getElementById('chartProd');
   if (!ctx) return;
   charts.prod = new Chart(ctx.getContext('2d'), {
-    type: 'line',
+    type: 'bar',
     data: {labels: labels, datasets: [
-      {label: 'Pick Uds/Hr', data: pickUphData,
-       borderColor: '#2E75B6', backgroundColor: 'rgba(46,117,182,.12)',
-       borderWidth: 2, pointRadius: 4, tension: .3, fill: false},
-      {label: 'Pack Uds/Hr', data: packUphData,
-       borderColor: '#C55A11', backgroundColor: 'rgba(197,90,17,.12)',
-       borderWidth: 2, pointRadius: 4, tension: .3, fill: false}
+      {label: 'Uds/Hr Pick', data: pickUphData,
+       backgroundColor: 'rgba(46,117,182,.75)', borderColor: '#2E75B6', borderWidth: 1},
+      {label: 'Uds/Hr Pack', data: packUphData,
+       backgroundColor: 'rgba(197,90,17,.75)', borderColor: '#C55A11', borderWidth: 1},
+      {label: 'Prod/Hr', data: prodHrData,
+       type: 'line', borderColor: '#375623', backgroundColor: 'transparent',
+       borderWidth: 2, pointRadius: 5, tension: .3, fill: false, order: -1}
     ]},
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: {position: 'top', labels: {boxWidth: 12, font: {size: 11}}},
-        tooltip: {callbacks: {label: function(c) { return c.dataset.label + ': ' + c.raw + ' uds/hr'; }}}
+        tooltip: {callbacks: {label: function(c) { return c.dataset.label + ': ' + c.raw + ' u/h'; }}}
       },
       scales: {
         x: {ticks: {font: {size: 10}}},
-        y: {beginAtZero: false, ticks: {font: {size: 10}, callback: function(v) { return v + ' u/h'; }}}
+        y: {beginAtZero: true, ticks: {font: {size: 10}, callback: function(v) { return v + ' u/h'; }}}
       }
     }
   });
