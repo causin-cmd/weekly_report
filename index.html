@@ -919,6 +919,7 @@ const PROD_SHIFT_LABELS = ['Diurno Semana','Diurno Sabado','Diurno Dom/Fer','Noc
 let activeProdShifts = new Set(PROD_SHIFTS);
 let prodWhList = [];
 let activeProdWh = new Set();
+let activeProdSort = {col: 'prod_hr', dir: -1}; // -1 desc, 1 asc
 
 function toggleProdShift(idx) {
   const s = PROD_SHIFTS[idx];
@@ -965,6 +966,16 @@ function _buildWhChips(data) {
     html += '<span class="chip active" id="pwchip-' + i + '" style="' + c + ';border-width:2px" onclick="toggleProdWh(' + i + ');">' + wh + '</span>';
   });
   container.innerHTML = html;
+}
+
+function setProdSort(col) {
+  if (activeProdSort.col === col) {
+    activeProdSort.dir *= -1;
+  } else {
+    activeProdSort.col = col;
+    activeProdSort.dir = (col === 'picker_name' || col === 'wh_name') ? 1 : -1;
+  }
+  renderProductividad();
 }
 
 function onProdDateChange() {
@@ -1069,7 +1080,13 @@ function renderProductividad() {
     });
   }
 
-  tableRows.sort(function(a, b) { return b.prod_hr - a.prod_hr; });
+  // Ordenar según columna activa
+  tableRows.sort(function(a, b) {
+    var col = activeProdSort.col, dir = activeProdSort.dir;
+    var av = a[col], bv = b[col];
+    if (typeof av === 'string') return dir * av.localeCompare(bv, 'es', {sensitivity: 'base'});
+    return dir * (av - bv);
+  });
 
   if (!tableRows.length) {
     content.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center">Sin operarios para los filtros seleccionados.</div>';
@@ -1079,12 +1096,25 @@ function renderProductividad() {
   var totPk = 0, totPa = 0, totH = 0;
   tableRows.forEach(function(r) { totPk += r.picks; totPa += r.packs; totH += r.hours; });
 
+  // Indicador de orden en la cabecera activa
+  function thSort(col, label, extra) {
+    var isActive = activeProdSort.col === col;
+    var arrow = isActive ? (activeProdSort.dir === -1 ? ' ▼' : ' ▲') : ' ⇅';
+    var bg = extra || '';
+    var align = (col === 'picker_name' || col === 'wh_name') ? 'text-align:left;' : '';
+    return '<th onclick="setProdSort(\'' + col + '\')" style="' + align + bg + 'cursor:pointer;user-select:none" title="Ordenar">' + label + '<span style="color:#888;font-size:10px">' + arrow + '</span></th>';
+  }
+
   var html = '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Calculado al: ' + latestGenerated + '</div>';
   html += '<div class="tbl-wrap"><table class="prod"><thead><tr>';
-  html += '<th style="text-align:left">Operario</th><th style="text-align:left">Bodega</th>';
-  html += '<th>Ped Pick</th><th>Ped/Hr Pick</th>';
-  html += '<th>Ped Pack</th><th>Ped/Hr Pack</th>';
-  html += '<th style="background:var(--cl-l)">Prod/Hr</th><th>Horas</th>';
+  html += thSort('picker_name', 'Operario');
+  html += thSort('wh_name', 'Bodega');
+  html += thSort('picks', 'Ped Pick');
+  html += thSort('picks_phr', 'Ped/Hr Pick');
+  html += thSort('packs', 'Ped Pack');
+  html += thSort('packs_phr', 'Ped/Hr Pack');
+  html += thSort('prod_hr', 'Prod/Hr', 'background:var(--cl-l);');
+  html += thSort('hours', 'Horas');
   html += '</tr></thead><tbody>';
   tableRows.forEach(function(r) {
     html += '<tr>';
