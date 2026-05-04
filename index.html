@@ -1167,34 +1167,49 @@ function renderProdTrendChart(prodData) {
     return;
   }
 
+  // Agrupar por fecha (y por semana si hay mas de 60 dias)
   var dateMap = {};
   daily.forEach(function(r) { dateMap[r.date] = true; });
-  var labels = Object.keys(dateMap).sort();
+  var allDates = Object.keys(dateMap).sort();
+  var useWeekly = allDates.length > 60;
 
-  function calcDate(date) {
-    var pk = 0, pa = 0, h = 0;
-    daily.forEach(function(r) {
-      if (r.date === date) { pk += r.picks; pa += r.packs; h += r.hours; }
-    });
-    if (h <= 0) return {pickPhr: null, packPhr: null};
-    return {pickPhr: +(pk / h).toFixed(1), packPhr: +(pa / h).toFixed(1)};
+  function isoWeek(dateStr) {
+    // Devuelve la fecha del lunes de la semana (YYYY-MM-DD)
+    var d = new Date(dateStr + 'T12:00:00');
+    var day = d.getDay() || 7; // 1=lun...7=dom
+    d.setDate(d.getDate() - day + 1);
+    return d.toISOString().slice(0,10);
   }
 
+  // Construir mapa label -> {pk, pa, h}
+  var bucketMap = {};
+  daily.forEach(function(r) {
+    var key = useWeekly ? isoWeek(r.date) : r.date;
+    if (!bucketMap[key]) bucketMap[key] = {pk:0, pa:0, h:0};
+    bucketMap[key].pk += r.picks;
+    bucketMap[key].pa += r.packs;
+    bucketMap[key].h  += r.hours;
+  });
+  var labels = Object.keys(bucketMap).sort();
+  var granLabel = useWeekly ? ' (sem)' : '';
+
   var pickPhrData = [], packPhrData = [];
-  labels.forEach(function(d) {
-    var v = calcDate(d);
-    pickPhrData.push(v.pickPhr); packPhrData.push(v.packPhr);
+  labels.forEach(function(k) {
+    var v = bucketMap[k];
+    if (v.h <= 0) { pickPhrData.push(null); packPhrData.push(null); return; }
+    pickPhrData.push(+(v.pk / v.h).toFixed(1));
+    packPhrData.push(+(v.pa / v.h).toFixed(1));
   });
 
   charts.prod = new Chart(ctx.getContext('2d'), {
     type: 'line',
     data: {labels: labels, datasets: [
-      {label: 'Ped/Hr Pick', data: pickPhrData,
+      {label: 'Ped/Hr Pick' + granLabel, data: pickPhrData,
        borderColor: '#2E75B6', backgroundColor: 'rgba(46,117,182,.08)',
-       borderWidth: 2, pointRadius: 3, tension: .3, fill: false},
-      {label: 'Ped/Hr Pack', data: packPhrData,
+       borderWidth: 2, pointRadius: useWeekly ? 4 : 3, tension: .3, fill: false},
+      {label: 'Ped/Hr Pack' + granLabel, data: packPhrData,
        borderColor: '#C55A11', backgroundColor: 'rgba(197,90,17,.08)',
-       borderWidth: 2, pointRadius: 3, tension: .3, fill: false}
+       borderWidth: 2, pointRadius: useWeekly ? 4 : 3, tension: .3, fill: false}
     ]},
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -1206,7 +1221,7 @@ function renderProdTrendChart(prodData) {
         }}}
       },
       scales: {
-        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: 20}},
+        x: {ticks: {font: {size: 10}, maxRotation: 45, autoSkip: true, maxTicksLimit: 24}},
         y: {beginAtZero: true,
             title: {display: true, text: 'Ped/Hr', font: {size: 10}},
             ticks: {font: {size: 10}, callback: function(v) { return v + ' p/h'; }}}
