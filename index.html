@@ -1213,6 +1213,7 @@ function renderProdTrendChart(prodData) {
     ]},
     options: {
       responsive: true, maintainAspectRatio: false,
+      animation: {duration: 0},
       interaction: {mode: 'index', intersect: false},
       plugins: {
         legend: {position: 'top', labels: {boxWidth: 12, font: {size: 11}}},
