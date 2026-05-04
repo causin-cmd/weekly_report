@@ -266,6 +266,14 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
         <span class="fl">Operario</span>
         <input type="text" id="prod-op-search" placeholder="Buscar..." oninput="renderProductividad()" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:150px">
       </div>
+      <div class="fg" style="gap:8px;align-items:center">
+        <span class="fl">Empresa</span>
+        <div class="btn-g">
+          <button id="pempresa-todos" class="active" onclick="setProdEmpresa('todos')">Todos</button>
+          <button id="pempresa-zubale" onclick="setProdEmpresa('zubale')">Zubale</button>
+          <button id="pempresa-propios" onclick="setProdEmpresa('propios')">Propios</button>
+        </div>
+      </div>
       <div class="fg" style="gap:6px;align-items:center;flex-wrap:wrap">
         <span class="fl">Turno</span>
         <span class="chip cl active" id="pchip-0" onclick="toggleProdShift(0)">Diurno Semana</span>
@@ -921,6 +929,7 @@ let activeProdShifts = new Set(PROD_SHIFTS);
 let prodWhList = [];
 let activeProdWh = new Set();
 let activeProdSort = {col: 'prod_hr', dir: -1}; // -1 desc, 1 asc
+let activeProdEmpresa = 'todos'; // 'todos' | 'zubale' | 'propios'
 
 function toggleProdShift(idx) {
   const s = PROD_SHIFTS[idx];
@@ -976,6 +985,15 @@ function setProdSort(col) {
     activeProdSort.col = col;
     activeProdSort.dir = (col === 'picker_name' || col === 'wh_name') ? 1 : -1;
   }
+  renderProductividad();
+}
+
+function setProdEmpresa(val) {
+  activeProdEmpresa = val;
+  ['todos', 'zubale', 'propios'].forEach(function(v) {
+    var el = document.getElementById('pempresa-' + v);
+    if (el) el.classList.toggle('active', v === val);
+  });
   renderProductividad();
 }
 
@@ -1075,6 +1093,17 @@ function renderProductividad() {
             picks_phr: pkPhr, packs_phr: paPhr,
             prod_hr: +((pkPhr + paPhr) / 2).toFixed(1)};
   });
+
+  // Filtro por empresa (Zubale / Propios)
+  if (activeProdEmpresa === 'zubale') {
+    tableRows = tableRows.filter(function(r) {
+      return r.picker_name.toLowerCase().indexOf('zubale') >= 0;
+    });
+  } else if (activeProdEmpresa === 'propios') {
+    tableRows = tableRows.filter(function(r) {
+      return r.picker_name.toLowerCase().indexOf('zubale') < 0;
+    });
+  }
 
   // Filtro por operario
   if (opSearch) {
