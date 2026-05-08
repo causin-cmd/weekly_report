@@ -551,12 +551,45 @@ function renderCPOMix(rows) {
 // =====================================================================
 // COST BAR CHART
 // =====================================================================
+
+// Plugin inline: dibuja % de Fijo/Variable dentro de cada segmento apilado.
+// Solo activo cuando hay exactamente 2 datasets (Fijo + Variable).
+const stackPctPlugin = {
+  id: 'stackPct',
+  afterDatasetsDraw(chart) {
+    const ds = chart.data.datasets;
+    if (ds.length !== 2 || ds[0].label !== 'Fijo') return;
+    const ctx2 = chart.ctx;
+    ctx2.save();
+    ctx2.textAlign = 'center';
+    ctx2.textBaseline = 'middle';
+    ctx2.font = 'bold 10px system-ui,sans-serif';
+    ds.forEach((dataset, dsIdx) => {
+      const meta = chart.getDatasetMeta(dsIdx);
+      if (meta.hidden) return;
+      meta.data.forEach((bar, i) => {
+        const v0 = ds[0].data[i] || 0;
+        const v1 = ds[1].data[i] || 0;
+        const total = v0 + v1;
+        if (total <= 0) return;
+        const val  = dataset.data[i] || 0;
+        const pct  = Math.round(val / total * 100);
+        if (pct < 6) return;
+        const barH = Math.abs(bar.base - bar.y);
+        if (barH < 14) return;
+        // Fijo (dsIdx 0) → texto blanco; Variable (dsIdx 1) → texto oscuro
+        ctx2.fillStyle = dsIdx === 0 ? 'rgba(255,255,255,.93)' : 'rgba(30,30,30,.75)';
+        ctx2.fillText(pct + '%', bar.x, bar.y + barH / 2);
+      });
+    });
+    ctx2.restore();
+  }
+};
+
 function renderCostBar(rows) {
   destroyChart('cost');
   const labels = rows.map(r => mLabel(r.month));
   const datasets = [];
-  const b0 = [...activeBodegas][0]; // use first active bodega for stacked
-  // Show all active bodegas, stacked fijo+var
   const cfg = [
     {b:'lp', label:'Las Parcelas', fColor:'#2E75B6', vColor:'#BDD7EE'},
     {b:'pa', label:'Parque Arauco', fColor:'#C55A11', vColor:'#FCE4D6'},
@@ -564,11 +597,10 @@ function renderCostBar(rows) {
   ].filter(c => activeBodegas.has(c.b));
 
   if (activeMetrica === 'tot') {
-    // Stacked: fijo + variable for each active bodega
     if (cfg.length === 1) {
       const c = cfg[0];
-      datasets.push({label:'Fijo', data: rows.map(r => r[`fijo_${c.b}`]/1e6), backgroundColor:c.fColor, stack:'s'});
-      datasets.push({label:'Variable', data: rows.map(r => r[`var_${c.b}`]/1e6), backgroundColor:c.vColor, stack:'s'});
+      datasets.push({label:'Fijo',     data: rows.map(r => r[`fijo_${c.b}`]/1e6), backgroundColor:c.fColor, stack:'s'});
+      datasets.push({label:'Variable', data: rows.map(r => r[`var_${c.b}`]/1e6),  backgroundColor:c.vColor, stack:'s'});
     } else {
       cfg.forEach(c => {
         const tot = rows.map(r => ((r[`fijo_${c.b}`]||0)+(r[`var_${c.b}`]||0))/1e6);
@@ -584,14 +616,18 @@ function renderCostBar(rows) {
 
   const ctx = document.getElementById('chartCost').getContext('2d');
   charts.cost = new Chart(ctx, {
-    type:'bar', data:{labels, datasets},
-    options:{
+    type: 'bar',
+    plugins: [stackPctPlugin],
+    data: {labels, datasets},
+    options: {
       responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{position:'top',labels:{boxWidth:12,font:{size:11}}},
-               tooltip:{callbacks:{label: c => `${c.dataset.label}: ${fmtM(c.raw*1e6)}`}}},
-      scales:{
-        x:{stacked:true, ticks:{font:{size:10},maxRotation:45}},
-        y:{stacked:true, ticks:{font:{size:10}, callback: v => v.toFixed(1)+' MM'}}
+      plugins: {
+        legend: {position:'top', labels:{boxWidth:12, font:{size:11}}},
+        tooltip: {callbacks:{label: c => `${c.dataset.label}: ${fmtM(c.raw*1e6)}`}},
+      },
+      scales: {
+        x: {stacked:true, ticks:{font:{size:10}, maxRotation:45}},
+        y: {stacked:true, ticks:{font:{size:10}, callback: v => v.toFixed(1)+' MM'}}
       }
     }
   });
