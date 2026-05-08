@@ -76,6 +76,7 @@ select{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-siz
 .chart-card h3{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px}
 .chart-wrap{position:relative;height:220px}
 .chart-wrap.tall{height:280px}
+.chart-wrap.big{height:320px}
 
 /* FORECAST TABLE */
 .fcst-wrap{overflow-x:auto}
@@ -173,11 +174,11 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
   <div class="charts-row">
     <div class="chart-card">
       <h3>Evolución CPO & Pedidos</h3>
-      <div class="chart-wrap"><canvas id="chartCPO"></canvas></div>
+      <div class="chart-wrap big"><canvas id="chartCPO"></canvas></div>
     </div>
     <div class="chart-card">
       <h3>Costo Total ($ MM)</h3>
-      <div class="chart-wrap"><canvas id="chartCost"></canvas></div>
+      <div class="chart-wrap big"><canvas id="chartCost"></canvas></div>
     </div>
   </div>
 </div>
