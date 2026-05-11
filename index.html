@@ -778,7 +778,8 @@ function renderFcstTable(fcst, b0, mc) {
 function updateDaily() {
   const from = document.getElementById('d-from').value;
   const to   = document.getElementById('d-to').value;
-  const rows = RAW.daily.filter(r => r.month >= from && r.month <= to);
+  const IRRENUNCIABLES = new Set(['01-01','05-01','09-18','09-19','12-25']);
+  const rows = RAW.daily.filter(r => r.month >= from && r.month <= to && !IRRENUNCIABLES.has(r.date.slice(5)));
   destroyChart('daily');
 
   const cfg = [
