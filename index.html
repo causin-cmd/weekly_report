@@ -92,6 +92,29 @@ select{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-siz
 .dif-neg{color:var(--up)}
 .dif-neu{color:var(--neu)}
 
+/* FORECAST BLOQUES */
+.fcst-bloque{background:var(--card);border-radius:10px;padding:16px 20px;border:1px solid var(--border);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.fcst-bloque-hdr{font-size:15px;font-weight:700;color:var(--cl);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--cl-l)}
+.frow{display:flex;align-items:baseline;gap:8px;padding:5px 0;font-size:13px;border-bottom:1px solid #f0f0f0}
+.frow:last-of-type{border-bottom:none}
+.frow .ficon{font-size:15px;width:22px;flex-shrink:0}
+.frow .flabel{flex:1;font-weight:600;color:var(--text)}
+.frow .fproy{color:var(--muted);font-size:12px;white-space:nowrap}
+.frow .freal{font-weight:700;color:var(--text);white-space:nowrap}
+.frow .fdelta{font-weight:700;font-size:12px;padding:2px 7px;border-radius:8px;white-space:nowrap}
+.fdelta.fpos{background:#FFEBEE;color:var(--dn)}
+.fdelta.fneg{background:#E8F5E9;color:var(--up)}
+.fdelta.fneu{background:#F5F5F5;color:var(--neu)}
+.descomp{background:var(--bg);border-radius:8px;padding:10px 14px;margin:8px 0 4px;border-left:3px solid var(--border)}
+.descomp-ttl{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.drow{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px}
+.drow .darr{color:var(--muted);font-size:11px;width:14px;flex-shrink:0}
+.drow .dlbl{flex:1;color:var(--text)}
+.drow .dval{font-weight:700;white-space:nowrap}
+.dval.dpos{color:var(--dn)}.dval.dneg{color:var(--up)}.dval.dneu{color:var(--neu)}
+.felasticidad{font-size:12px;color:var(--muted);padding:8px 0 2px;margin-top:6px;border-top:1px solid var(--border)}
+.fnarr{font-size:12px;color:var(--text);background:#F8F9FF;border-radius:8px;padding:10px 14px;margin-top:10px;border-left:3px solid var(--cl);line-height:1.6}
+
 /* FULL TABLE */
 .tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
 table.full{width:100%;border-collapse:collapse;font-size:12px}
@@ -209,6 +232,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
     <h3>Detalle por Mes</h3>
     <div class="fcst-wrap"><table class="fcst-table" id="fcstTable"></table></div>
   </div>
+  <div id="fcst-bloques" style="margin-top:14px"></div>
 </div>
 </div>
 
@@ -648,6 +672,7 @@ function renderForecast() {
   renderFcstCostChart(fcst, b0);
   renderFcstPedChart(fcst, b0);
   renderFcstTable(fcst, b0, mc);
+  renderForecastBloques(fcst, b0);
 }
 
 function renderFcstCPOChart(fcst, b0, mc) {
@@ -770,6 +795,171 @@ function renderFcstTable(fcst, b0, mc) {
   });
   html += '</tbody>';
   document.getElementById('fcstTable').innerHTML = html;
+}
+
+// =====================================================================
+// FORECAST BLOQUES (descomposicion por mes)
+// =====================================================================
+function _dClass(v, invertColor) {
+  // invertColor=true means positive delta is GOOD (e.g. pedidos > forecast)
+  if (v == null || Math.abs(v) < 1) return 'fneu';
+  if (invertColor) return v > 0 ? 'fneg' : 'fpos';
+  return v > 0 ? 'fpos' : 'fneg';
+}
+function _dClassAbs(v) {
+  // For CPO decomposition: positive = more expensive = bad = red
+  if (v == null || Math.abs(v) < 1) return 'dneu';
+  return v > 0 ? 'dpos' : 'dneg';
+}
+function _sign(v) { return v == null ? '' : (v >= 0 ? '+' : ''); }
+
+function buildNarrative(r, b0, deltaCPO, eVol, eDesvFijo, eDesvVar, elasticidad) {
+  if (deltaCPO == null) return '';
+  const absDelta = Math.abs(deltaCPO);
+  if (absDelta < 30) return 'El CPO estuvo alineado con el forecast (desviación menor a $30/ped).';
+
+  const direction = deltaCPO > 0 ? 'por encima' : 'por debajo';
+  const sign = deltaCPO > 0 ? 'mayor' : 'menor';
+
+  // Find dominant driver
+  const drivers = [
+    { name: 'efecto volumen', val: eVol },
+    { name: 'desviación de costo fijo', val: eDesvFijo },
+    { name: 'desviación de CPO variable (SOD)', val: eDesvVar },
+  ].filter(d => d.val != null);
+  if (!drivers.length) return `El CPO fue $${fmt(absDelta)}/ped ${direction} del forecast.`;
+
+  drivers.sort((a, b) => Math.abs(b.val) - Math.abs(a.val));
+  const main = drivers[0];
+  const mainSign = main.val > 0 ? 'al alza' : 'a la baja';
+
+  let txt = `El CPO fue $${fmt(absDelta)}/ped ${direction} del forecast. `;
+  if (main.name === 'efecto volumen') {
+    const pedReal = r[`ped_${b0}`]; const pedProy = r[`ped_${b0}_proy`];
+    const diffPed = pedReal && pedProy ? pedReal - pedProy : null;
+    txt += `El driver principal fue el efecto volumen ${mainSign}: `;
+    if (diffPed != null) txt += `con ${fmt(Math.abs(diffPed))} pedidos ${diffPed < 0 ? 'menos' : 'más'} que lo proyectado, el costo fijo se diluyó ${diffPed < 0 ? 'menos' : 'más'} de lo esperado ($${fmt(Math.abs(main.val))}/ped de impacto). `;
+  } else if (main.name === 'desviación de costo fijo') {
+    const fijoReal = r[`fijo_${b0}`]; const fijoProy = r[`fijo_${b0}_proy`];
+    const diffFijo = fijoReal && fijoProy ? (fijoReal - fijoProy) / 1e6 : null;
+    txt += `El driver principal fue la desviación de costo fijo ${mainSign}: `;
+    if (diffFijo != null) txt += `el costo fijo real fue ${diffFijo > 0 ? '$'+Math.abs(diffFijo).toFixed(2)+' MM más' : '$'+Math.abs(diffFijo).toFixed(2)+' MM menos'} que el forecast ($${fmt(Math.abs(main.val))}/ped de impacto en CPO). `;
+  } else {
+    txt += `El driver principal fue la desviación de CPO variable (SOD y otros) ${mainSign}: $${fmt(Math.abs(main.val))}/ped de diferencia vs forecast. `;
+  }
+  if (elasticidad != null && Math.abs(elasticidad) < 2) {
+    txt += `La elasticidad SOD/Pedidos fue ${(elasticidad*100).toFixed(0)}%, `;
+    txt += elasticidad > 0.8 ? 'mostrando alta absorción del costo variable ante el volumen.' :
+           elasticidad < 0.3 ? 'indicando que el SOD no acompañó proporcionalmente la caída de pedidos.' :
+           'con absorción parcial del costo variable.';
+  }
+  return txt;
+}
+
+function renderForecastBloques(fcst, b0) {
+  const withReal = [...fcst].filter(r => r.has_real).reverse(); // más reciente primero
+  const container = document.getElementById('fcst-bloques');
+  if (!container) return;
+  if (!withReal.length) { container.innerHTML = ''; return; }
+
+  const bLabel = {lp:'Las Parcelas', pa:'Parque Arauco', cl:'Total CL'}[b0];
+
+  let html = `<div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">
+    Descomposición mensual — ${bLabel}</div>`;
+
+  withReal.forEach(r => {
+    const pedProy  = r[`ped_${b0}_proy`];
+    const pedReal  = r[`ped_${b0}`];
+    const fijoProy = r[`fijo_${b0}_proy`];
+    const fijoReal = r[`fijo_${b0}`];
+    const varProy  = r[`var_${b0}_proy`];
+    const varReal  = r[`var_${b0}`];
+    const sodReal  = r[`sod_${b0}`];
+    const sodProy  = r[`sod_${b0}_proy`];
+    const cpoProy  = r[`cpo_tot_${b0}_proy`];
+    const cpoReal  = r[`cpo_tot_${b0}`];
+    const cpoVarReal = r[`cpo_var_${b0}`];
+    const cpoVarProy = (varProy && pedProy) ? varProy / pedProy : null;
+
+    // Deltas
+    const deltaCPO    = (cpoReal != null && cpoProy != null) ? cpoReal - cpoProy : null;
+    const eVol        = (fijoProy && pedReal && pedProy) ? fijoProy * (1/pedReal - 1/pedProy) : null;
+    const eDesvFijo   = (fijoReal != null && fijoProy != null && pedReal) ? (fijoReal - fijoProy) / pedReal : null;
+    const eDesvVar    = (cpoVarReal != null && cpoVarProy != null) ? cpoVarReal - cpoVarProy : null;
+    const deltaPed    = (pedReal != null && pedProy != null) ? pedReal - pedProy : null;
+    const deltaPedPct = (pedReal && pedProy) ? (pedReal - pedProy) / pedProy : null;
+    const deltaSodPct = (sodReal && sodProy) ? (sodReal - sodProy) / sodProy : null;
+    const deltaFijoPct= (fijoReal && fijoProy) ? (fijoReal - fijoProy) / fijoProy : null;
+    const elasticidad = (deltaSodPct != null && deltaPedPct && Math.abs(deltaPedPct) > 0.001)
+      ? deltaSodPct / deltaPedPct : null;
+
+    const narrative = buildNarrative(r, b0, deltaCPO, eVol, eDesvFijo, eDesvVar, elasticidad);
+
+    // CPO delta class: higher CPO = bad = red (.fpos)
+    const cpoDCls = _dClass(deltaCPO, false);
+    const pedDCls = _dClass(deltaPed, true); // more pedidos = good = green
+
+    html += `<div class="fcst-bloque">
+      <div class="fcst-bloque-hdr">${mLabel(r.month)}</div>
+
+      <div class="frow">
+        <span class="ficon">📦</span>
+        <span class="flabel">CPO Total</span>
+        <span class="fproy">${cpoProy != null ? '$'+fmtCPO(cpoProy)+'/ped proy' : '—'}</span>
+        <span class="freal">${cpoReal != null ? '$'+fmtCPO(cpoReal)+'/ped' : '—'}</span>
+        <span class="fdelta ${cpoDCls}">${deltaCPO != null ? _sign(deltaCPO)+'$'+fmt(Math.abs(deltaCPO))+'/ped' : '—'}</span>
+      </div>
+
+      ${(eVol != null || eDesvFijo != null || eDesvVar != null) ? `
+      <div class="descomp">
+        <div class="descomp-ttl">Descomposición ΔCPO ($/ped)</div>
+        ${eVol != null ? `<div class="drow">
+          <span class="darr">↳</span>
+          <span class="dlbl">Efecto volumen sobre costo fijo</span>
+          <span class="dval ${_dClassAbs(eVol)}">${_sign(eVol)}$${fmt(Math.abs(eVol))}/ped</span>
+        </div>` : ''}
+        ${eDesvFijo != null ? `<div class="drow">
+          <span class="darr">↳</span>
+          <span class="dlbl">Desv. costo fijo real vs forecast</span>
+          <span class="dval ${_dClassAbs(eDesvFijo)}">${_sign(eDesvFijo)}$${fmt(Math.abs(eDesvFijo))}/ped</span>
+        </div>` : ''}
+        ${eDesvVar != null ? `<div class="drow">
+          <span class="darr">↳</span>
+          <span class="dlbl">Desv. CPO variable (SOD + otros)</span>
+          <span class="dval ${_dClassAbs(eDesvVar)}">${_sign(eDesvVar)}$${fmt(Math.abs(eDesvVar))}/ped</span>
+        </div>` : ''}
+      </div>` : ''}
+
+      <div class="frow">
+        <span class="ficon">📦</span>
+        <span class="flabel">Pedidos</span>
+        <span class="fproy">${pedProy != null ? fmt(pedProy)+' proy' : '—'}</span>
+        <span class="freal">${pedReal != null ? fmt(pedReal) : '—'}</span>
+        <span class="fdelta ${pedDCls}">${deltaPed != null ? _sign(deltaPed)+fmt(Math.abs(deltaPed)) : '—'} ${deltaPedPct != null ? '('+fmtPct(deltaPedPct)+')' : ''}</span>
+      </div>
+
+      <div class="frow">
+        <span class="ficon">👷</span>
+        <span class="flabel">Staff on Demand</span>
+        <span class="fproy">${sodProy != null ? fmtM(sodProy)+' proy' : '—'}</span>
+        <span class="freal">${sodReal != null ? fmtM(sodReal) : '—'}</span>
+        <span class="fdelta ${_dClass(deltaSodPct, false)}">${deltaSodPct != null ? _sign(deltaSodPct)+''+(deltaSodPct*100).toFixed(1)+'%' : '—'}</span>
+      </div>
+
+      <div class="frow">
+        <span class="ficon">🏗️</span>
+        <span class="flabel">Costo Fijo</span>
+        <span class="fproy">${fijoProy != null ? fmtM(fijoProy)+' proy' : '—'}</span>
+        <span class="freal">${fijoReal != null ? fmtM(fijoReal) : '—'}</span>
+        <span class="fdelta ${_dClass(deltaFijoPct, false)}">${deltaFijoPct != null ? _sign(deltaFijoPct)+''+(deltaFijoPct*100).toFixed(1)+'%' : '—'}</span>
+      </div>
+
+      ${elasticidad != null ? `<div class="felasticidad">Elasticidad SOD/Pedidos: <strong>${(elasticidad*100).toFixed(0)}%</strong></div>` : ''}
+      ${narrative ? `<div class="fnarr">${narrative}</div>` : ''}
+    </div>`;
+  });
+
+  container.innerHTML = html;
 }
 
 // =====================================================================
