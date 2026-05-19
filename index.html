@@ -815,7 +815,10 @@ function _sign(v) { return v == null ? '' : (v >= 0 ? '+' : ''); }
 
 // Anotaciones de costo variable por mes: array de {label, monto en $}
 const NOTAS_FCST = {
-  '2026-04': [{ label: 'Reemplazo vacaciones jefe de ingresos', monto: 536874 }],
+  '2026-04': [
+    { label: 'Reemplazo vacaciones jefe de ingresos', monto: 536874 },
+    { label: 'Renuncia costo fijo reemplazada con costo variable', monto: 462399 },
+  ],
 };
 
 function buildNarrative(r, b0, deltaCPO, eVol, eDesvFijo, eDesvVar, elasticidad) {
