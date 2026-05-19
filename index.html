@@ -813,6 +813,11 @@ function _dClassAbs(v) {
 }
 function _sign(v) { return v == null ? '' : (v >= 0 ? '+' : ''); }
 
+// Anotaciones manuales por mes — se muestran debajo de la narrativa
+const NOTAS_FCST = {
+  '2026-04': ['$536.874 de desviación en costo variable corresponde a reemplazo de vacaciones del jefe de ingresos.'],
+};
+
 function buildNarrative(r, b0, deltaCPO, eVol, eDesvFijo, eDesvVar, elasticidad) {
   if (deltaCPO == null) return '';
   const absDelta = Math.abs(deltaCPO);
@@ -866,27 +871,30 @@ function renderWaterfallChart(canvasId, cpoProy, cpoReal, eVol, eDesvFijo, eDesv
   const bars = [];
 
   bars.push({ label: 'Proy.', low: 0, high: cpoProy, color: '#607D9F', solid: true });
-  let cum = cpoProy;
 
-  if (eVol != null) {
-    bars.push({ label: 'Ef. Vol.', low: cum, high: cum + eVol, color: eVol > 0 ? BAD : GOOD });
-    cum += eVol;
-  }
-  if (eDesvFijo != null) {
-    bars.push({ label: 'Desv. Fijo', low: cum, high: cum + eDesvFijo, color: eDesvFijo > 0 ? BAD : GOOD });
-    cum += eDesvFijo;
-  }
+  // Collect delta components, then sort: positives first (desc magnitude), negatives after (desc magnitude)
+  const deltas = [];
+  if (eVol != null)      deltas.push({ label: 'Ef. Vol.',    val: eVol });
+  if (eDesvFijo != null) deltas.push({ label: 'Desv. Fijo',  val: eDesvFijo });
   if (descCPO != null && descCPO > 0.5) {
-    // Zubale discount saves CPO → bar goes DOWN (from cum to cum-descCPO)
-    bars.push({ label: 'Desc. Zubale', low: cum - descCPO, high: cum, color: GOOD });
-    cum -= descCPO;
-    if (eDesvVar != null) {
-      const restoVar = eDesvVar + descCPO; // remaining variable after stripping discount
-      bars.push({ label: 'Resto SOD', low: cum, high: cum + restoVar, color: restoVar > 0 ? BAD : GOOD });
-    }
+    deltas.push({ label: 'Desc. Zubale', val: -descCPO }); // negative = saves CPO = good
+    if (eDesvVar != null) deltas.push({ label: 'Resto SOD', val: eDesvVar + descCPO });
   } else if (eDesvVar != null) {
-    bars.push({ label: 'Desv. SOD', low: cum, high: cum + eDesvVar, color: eDesvVar > 0 ? BAD : GOOD });
+    deltas.push({ label: 'Desv. SOD', val: eDesvVar });
   }
+  // Positives first (highest → lowest), then negatives (lowest absolute → highest absolute, i.e. desc)
+  deltas.sort((a, b) => {
+    const aPos = a.val >= 0, bPos = b.val >= 0;
+    if (aPos && !bPos) return -1;
+    if (!aPos && bPos) return 1;
+    return Math.abs(b.val) - Math.abs(a.val);
+  });
+  let cum = cpoProy;
+  deltas.forEach(d => {
+    bars.push({ label: d.label, low: cum, high: cum + d.val, color: d.val > 0 ? BAD : GOOD });
+    cum += d.val;
+  });
+
   bars.push({ label: 'Real', low: 0, high: cpoReal, color: '#1F3864', solid: true });
 
   const allVals = bars.flatMap(b => [b.low, b.high]);
@@ -1062,6 +1070,7 @@ function renderForecastBloques(fcst, b0) {
 
       ${elasticidad != null ? `<div class="felasticidad">Elasticidad SOD/Pedidos: <strong>${(elasticidad*100).toFixed(0)}%</strong></div>` : ''}
       ${narrative ? `<div class="fnarr">${narrative}</div>` : ''}
+      ${(NOTAS_FCST[r.month] || []).map(n => `<div class="fnarr" style="border-left-color:var(--neu);background:#F5F5F5;margin-top:6px"><strong>📌 Nota:</strong> ${n}</div>`).join('')}
     </div>`;
   });
 
