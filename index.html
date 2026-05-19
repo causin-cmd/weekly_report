@@ -998,6 +998,13 @@ function renderForecastBloques(fcst, b0) {
     const elasticidad = (deltaSodPct != null && deltaPedPct && Math.abs(deltaPedPct) > 0.001)
       ? deltaSodPct / deltaPedPct : null;
 
+    // Elasticidad ajustada: excluye costos one-off conocidos del sodReal
+    const notasMontoAdj = (NOTAS_FCST[r.month] || []).reduce((s, n) => s + n.monto, 0);
+    const sodRealAdj    = (sodReal && notasMontoAdj > 0) ? sodReal - notasMontoAdj : null;
+    const deltaSodPctAdj = (sodRealAdj != null && sodProy) ? (sodRealAdj - sodProy) / sodProy : null;
+    const elasticidadAdj = (deltaSodPctAdj != null && deltaPedPct && Math.abs(deltaPedPct) > 0.001 && notasMontoAdj > 0)
+      ? deltaSodPctAdj / deltaPedPct : null;
+
     const narrative = buildNarrative(r, b0, deltaCPO, eVol, eDesvFijo, eDesvVar, elasticidad);
 
     // Waterfall chart: compute descCPO for this bodega and store for later rendering
@@ -1100,7 +1107,7 @@ function renderForecastBloques(fcst, b0) {
         <span class="fdelta ${_dClass(deltaFijoPct, false)}">${deltaFijoPct != null ? _sign(deltaFijoPct)+''+(deltaFijoPct*100).toFixed(1)+'%' : '—'}</span>
       </div>
 
-      ${elasticidad != null ? `<div class="felasticidad">Elasticidad SOD/Pedidos: <strong>${(elasticidad*100).toFixed(0)}%</strong></div>` : ''}
+      ${elasticidad != null ? `<div class="felasticidad">Elasticidad SOD/Pedidos: <strong>${(elasticidad*100).toFixed(0)}%</strong>${elasticidadAdj != null ? ` · ajustada sin one-offs: <strong>${(elasticidadAdj*100).toFixed(0)}%</strong>` : ''}</div>` : ''}
       ${narrative ? `<div class="fnarr">${narrative}</div>` : ''}
     </div>`;
   });
