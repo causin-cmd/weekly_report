@@ -813,9 +813,9 @@ function _dClassAbs(v) {
 }
 function _sign(v) { return v == null ? '' : (v >= 0 ? '+' : ''); }
 
-// Anotaciones manuales por mes — se muestran debajo de la narrativa
+// Anotaciones de costo variable por mes: array de {label, monto en $}
 const NOTAS_FCST = {
-  '2026-04': ['$536.874 de desviación en costo variable corresponde a reemplazo de vacaciones del jefe de ingresos.'],
+  '2026-04': [{ label: 'Reemplazo vacaciones jefe de ingresos', monto: 536874 }],
 };
 
 function buildNarrative(r, b0, deltaCPO, eVol, eDesvFijo, eDesvVar, elasticidad) {
@@ -861,7 +861,7 @@ function buildNarrative(r, b0, deltaCPO, eVol, eDesvFijo, eDesvVar, elasticidad)
   return txt;
 }
 
-function renderWaterfallChart(canvasId, cpoProy, cpoReal, eVol, eDesvFijo, eDesvVar, descCPO) {
+function renderWaterfallChart(canvasId, cpoProy, cpoReal, eVol, eDesvFijo, eDesvVar, descCPO, notasCPO) {
   if (!window._wfCharts) window._wfCharts = {};
   if (cpoProy == null || cpoReal == null) return;
   const canvas = document.getElementById(canvasId);
@@ -876,11 +876,24 @@ function renderWaterfallChart(canvasId, cpoProy, cpoReal, eVol, eDesvFijo, eDesv
   const deltas = [];
   if (eVol != null)      deltas.push({ label: 'Ef. Vol.',    val: eVol });
   if (eDesvFijo != null) deltas.push({ label: 'Desv. Fijo',  val: eDesvFijo });
+  const notas = notasCPO || [];
+  const notaSum = notas.reduce((s, n) => s + (n.val || 0), 0);
   if (descCPO != null && descCPO > 0.5) {
-    deltas.push({ label: 'Desc. Zubale', val: -descCPO }); // negative = saves CPO = good
-    if (eDesvVar != null) deltas.push({ label: 'Resto SOD', val: eDesvVar + descCPO });
+    deltas.push({ label: 'Desc. Zubale', val: -descCPO });
+    if (eDesvVar != null) {
+      const restoVar = eDesvVar + descCPO;
+      notas.forEach(n => deltas.push({ label: n.label, val: n.val }));
+      const residual = restoVar - notaSum;
+      if (Math.abs(residual) > 0.5) deltas.push({ label: 'Resto SOD', val: residual });
+    }
   } else if (eDesvVar != null) {
-    deltas.push({ label: 'Desv. SOD', val: eDesvVar });
+    notas.forEach(n => deltas.push({ label: n.label, val: n.val }));
+    if (notas.length > 0) {
+      const residual = eDesvVar - notaSum;
+      if (Math.abs(residual) > 0.5) deltas.push({ label: 'Resto SOD', val: residual });
+    } else {
+      deltas.push({ label: 'Desv. SOD', val: eDesvVar });
+    }
   }
   // Positives first (highest → lowest), then negatives (lowest absolute → highest absolute, i.e. desc)
   deltas.sort((a, b) => {
@@ -990,7 +1003,10 @@ function renderForecastBloques(fcst, b0) {
     // Waterfall chart: compute descCPO for this bodega and store for later rendering
     const descMontoChart = b0==='lp' ? r['zubale_descuento_lp'] : b0==='pa' ? r['zubale_descuento_pa'] : r['zubale_descuento_cl'];
     const descCPOChart = (descMontoChart && pedReal && pedReal > 0) ? descMontoChart / pedReal : null;
-    chartData.push({ canvasId: `wf-${r.month}`, cpoProy, cpoReal, eVol, eDesvFijo, eDesvVar, descCPO: descCPOChart });
+    const notasCPOChart = (NOTAS_FCST[r.month] || [])
+      .map(n => ({ label: n.label, val: (pedReal && pedReal > 0) ? n.monto / pedReal : null }))
+      .filter(n => n.val != null);
+    chartData.push({ canvasId: `wf-${r.month}`, cpoProy, cpoReal, eVol, eDesvFijo, eDesvVar, descCPO: descCPOChart, notasCPO: notasCPOChart });
 
     // CPO delta class: higher CPO = bad = red (.fpos)
     const cpoDCls = _dClass(deltaCPO, false);
@@ -1059,6 +1075,22 @@ function renderForecastBloques(fcst, b0) {
           ${descCPO != null ? '<div class="drow"><span class="darr">↳</span><span class="dlbl">Impacto en CPO</span><span class="dval dneg">-$'+fmt(descCPO)+'/ped</span></div>' : ''}
         </div>`;
       })()}
+      ${(() => {
+        const notas = NOTAS_FCST[r.month] || [];
+        if (!notas.length) return '';
+        return notas.map(n => {
+          const cpImpact = (pedReal && pedReal > 0) ? n.monto / pedReal : null;
+          return `<div class="descomp" style="border-left-color:var(--dn);margin-bottom:4px">
+            <div class="descomp-ttl" style="color:var(--dn)">${n.label}</div>
+            <div class="drow">
+              <span class="darr">↳</span>
+              <span class="dlbl">Costo adicional vs forecast</span>
+              <span class="dval dpos">+${fmtM(n.monto)}</span>
+            </div>
+            ${cpImpact != null ? '<div class="drow"><span class="darr">↳</span><span class="dlbl">Impacto en CPO</span><span class="dval dpos">+$'+fmt(cpImpact)+'/ped</span></div>' : ''}
+          </div>`;
+        }).join('');
+      })()}
 
       <div class="frow">
         <span class="ficon">🏗️</span>
@@ -1070,12 +1102,11 @@ function renderForecastBloques(fcst, b0) {
 
       ${elasticidad != null ? `<div class="felasticidad">Elasticidad SOD/Pedidos: <strong>${(elasticidad*100).toFixed(0)}%</strong></div>` : ''}
       ${narrative ? `<div class="fnarr">${narrative}</div>` : ''}
-      ${(NOTAS_FCST[r.month] || []).map(n => `<div class="fnarr" style="border-left-color:var(--neu);background:#F5F5F5;margin-top:6px"><strong>📌 Nota:</strong> ${n}</div>`).join('')}
     </div>`;
   });
 
   container.innerHTML = html;
-  chartData.forEach(d => renderWaterfallChart(d.canvasId, d.cpoProy, d.cpoReal, d.eVol, d.eDesvFijo, d.eDesvVar, d.descCPO));
+  chartData.forEach(d => renderWaterfallChart(d.canvasId, d.cpoProy, d.cpoReal, d.eVol, d.eDesvFijo, d.eDesvVar, d.descCPO, d.notasCPO));
 }
 
 // =====================================================================
