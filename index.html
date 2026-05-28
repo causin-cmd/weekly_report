@@ -1517,6 +1517,21 @@ function renderProductividad() {
   var totPk = 0, totPa = 0, totH = 0;
   tableRows.forEach(function(r) { totPk += r.picks; totPa += r.packs; totH += r.hours; });
 
+  // KPI desde daily (misma fuente y filtro exacto de fechas que el gráfico)
+  var kpiPk = 0, kpiPa = 0, kpiH = 0;
+  Object.keys(prodData).sort().forEach(function(m) {
+    (prodData[m].daily || []).forEach(function(r) {
+      if (r.date < desde || r.date > hasta) return;
+      var shiftOk = activeProdShifts.has(r.shift || 'Turno Diurno Semana');
+      var whKey = r.warehouse_name || String(r.warehouse_id);
+      var whOk = activeProdWh.size === 0 || activeProdWh.has(whKey);
+      if (shiftOk && whOk) { kpiPk += r.picks; kpiPa += r.packs; kpiH += r.hours; }
+    });
+  });
+  var kpiPkPhr = kpiH > 0 ? (kpiPk / kpiH).toFixed(1) : '0';
+  var kpiPaPhr = kpiH > 0 ? (kpiPa / kpiH).toFixed(1) : '0';
+  var kpiProd  = ((parseFloat(kpiPkPhr) + parseFloat(kpiPaPhr)) / 2).toFixed(1);
+
   // Indicador de orden en la cabecera activa
   function thSort(col, label, extra) {
     var isActive = activeProdSort.col === col;
@@ -1556,17 +1571,17 @@ function renderProductividad() {
     kpiEl.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
       '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 28px;display:flex;flex-direction:column;align-items:center;min-width:160px">' +
         '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Prod/Hr Promedio</div>' +
-        '<div style="font-size:36px;font-weight:800;color:var(--cl);line-height:1">' + tProd + '</div>' +
+        '<div style="font-size:36px;font-weight:800;color:var(--cl);line-height:1">' + kpiProd + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-top:4px">ped/hr · período completo</div>' +
       '</div>' +
       '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 24px;display:flex;flex-direction:column;align-items:center;min-width:140px">' +
         '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Ped/Hr Pick</div>' +
-        '<div style="font-size:28px;font-weight:700;color:#2E75B6;line-height:1">' + tPkPhr + '</div>' +
+        '<div style="font-size:28px;font-weight:700;color:#2E75B6;line-height:1">' + kpiPkPhr + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-top:4px">promedio período</div>' +
       '</div>' +
       '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 24px;display:flex;flex-direction:column;align-items:center;min-width:140px">' +
         '<div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Ped/Hr Pack</div>' +
-        '<div style="font-size:28px;font-weight:700;color:#C55A11;line-height:1">' + tPaPhr + '</div>' +
+        '<div style="font-size:28px;font-weight:700;color:#C55A11;line-height:1">' + kpiPaPhr + '</div>' +
         '<div style="font-size:11px;color:var(--muted);margin-top:4px">promedio período</div>' +
       '</div>' +
       '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 24px;display:flex;flex-direction:column;align-items:center;min-width:140px">' +
