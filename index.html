@@ -1362,7 +1362,7 @@ function _buildWhChips(data) {
   var html = '<span class="fl">Bodega</span>';
   prodWhList.forEach(function(wh, i) {
     var c = colors[i % colors.length];
-    html += '<span class="chip active" id="pwchip-' + i + '" style="' + c + ';border-width:2px" onclick="toggleProdWh(' + i + ');">' + wh + '</span>';
+    html += '<span class="chip' + (activeProdWh.has(wh) ? ' active' : '') + '" id="pwchip-' + i + '" style="' + c + ';border-width:2px" onclick="toggleProdWh(' + i + ');">' + wh + '</span>';
   });
   container.innerHTML = html;
 }
