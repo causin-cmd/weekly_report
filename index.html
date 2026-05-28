@@ -1343,7 +1343,10 @@ function _buildWhChips(data) {
   var seen = {};
   data.forEach(function(r) { seen[r.warehouse_name || String(r.warehouse_id)] = 1; });
   prodWhList = Object.keys(seen).sort();
-  activeProdWh = new Set(prodWhList);
+  // Preservar selección actual: mantener las bodegas ya activas que sigan existiendo en el nuevo rango
+  var prevActive = new Set(activeProdWh);
+  var preserved = prodWhList.filter(function(w) { return prevActive.has(w); });
+  activeProdWh = preserved.length > 0 ? new Set(preserved) : new Set(prodWhList);
   var container = document.getElementById('prod-wh-filters');
   if (!container) return;
   var colors = [
