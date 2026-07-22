@@ -117,14 +117,17 @@ select{padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-siz
 .fnarr{font-size:12px;color:var(--text);background:#F8F9FF;border-radius:8px;padding:10px 14px;margin-top:10px;border-left:3px solid var(--cl);line-height:1.6}
 
 /* FULL TABLE */
-.tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+.tbl-wrap{overflow-x:auto;overflow-y:auto;max-height:460px;border-radius:10px;border:1px solid var(--border)}
 table.full{width:100%;border-collapse:collapse;font-size:12px}
 table.full th{background:var(--cl);color:#fff;padding:7px 10px;text-align:right;font-size:11px;white-space:nowrap;position:sticky;top:0}
 table.full th:first-child{text-align:left}
 table.full td{padding:5px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
 table.full td:first-child{text-align:left;font-weight:600}
+table.full tbody tr{cursor:pointer}
 table.full tr:hover td{background:#F8F9FF}
 table.full tr.year-sep td{border-top:2px solid var(--cl-l)}
+table.full tr.selected td{background:#DCE6F5}
+table.full tr.selected td:first-child{color:var(--cl)}
 
 /* DAILY FILTERS */
 .daily-filters{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
@@ -187,7 +190,6 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
   <button class="tab-btn active" onclick="showTab('mensual')">Análisis Mensual</button>
   <button class="tab-btn" onclick="showTab('forecast')">Forecast vs Real 2026</button>
   <button class="tab-btn" onclick="showTab('diario')">CPO Diario</button>
-  <button class="tab-btn" onclick="showTab('tabla')">Tabla Completa</button>
   <button class="tab-btn" onclick="showTab('productividad')">Productividad</button>
 </div>
 
@@ -204,6 +206,10 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
       <h3>Costo Total ($ MM)</h3>
       <div class="chart-wrap big"><canvas id="chartCost"></canvas></div>
     </div>
+  </div>
+  <div class="chart-card">
+    <h3>Detalle por Mes <span style="font-size:11px;color:var(--muted);font-style:italic;font-weight:400">— haz clic en una fila o en un punto del gráfico para vincularlos</span></h3>
+    <div class="tbl-wrap"><table class="full" id="tblFull"></table></div>
   </div>
 </div>
 </div>
@@ -253,13 +259,6 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
   <div class="chart-card">
     <div class="chart-wrap fill"><canvas id="chartDaily"></canvas></div>
   </div>
-</div>
-</div>
-
-<!-- ===== TAB 4: TABLA COMPLETA ===== -->
-<div class="tab-pane" id="tab-tabla">
-<div class="main">
-  <div class="tbl-wrap"><table class="full" id="tblFull"></table></div>
 </div>
 </div>
 
@@ -317,6 +316,8 @@ let activeBodegas = new Set(['lp','pa','cl']);
 let activeMetrica = 'tot';   // tot | fij | var
 let activeTab = 'mensual';
 let activeDailyMetrica = 'cpo';
+let mensualRows = [];        // rows currently rendered in Análisis Mensual (tabla + gráficos)
+let selectedMonth = null;    // mes seleccionado — vincula tabla y gráficos
 
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const fmtM = n => n == null ? '—' : (n/1e6).toFixed(2).replace('.',',') + ' MM';
@@ -380,7 +381,7 @@ function showTab(t) {
   activeTab = t;
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id==='tab-'+t));
   document.querySelectorAll('.tab-btn').forEach((b,i) => {
-    b.classList.toggle('active', ['mensual','forecast','diario','tabla','productividad'][i]===t);
+    b.classList.toggle('active', ['mensual','forecast','diario','productividad'][i]===t);
   });
 }
 function setDailyMetrica(m) {
@@ -425,11 +426,51 @@ function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete chart
 // =====================================================================
 function updateAll() {
   const rows = getFiltered();
+  mensualRows = rows;
+  if (selectedMonth && !rows.some(r => r.month === selectedMonth)) selectedMonth = null;
   renderKPIs(rows);
   renderCPOMix(rows);
   renderCostBar(rows);
-  renderFullTable();
+  renderFullTable(rows);
 }
+
+// Vincula tabla <-> gráficos: clic en una fila o en un punto del gráfico
+// selecciona/deselecciona el mismo mes en ambos.
+function selectMonth(month) {
+  selectedMonth = (selectedMonth === month) ? null : month;
+  renderFullTable(mensualRows);
+  if (charts.cpo) charts.cpo.update();
+  if (charts.cost) charts.cost.update();
+  if (selectedMonth) {
+    const rowEl = document.querySelector(`#tblFull tr[data-month="${selectedMonth}"]`);
+    if (rowEl) rowEl.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  }
+}
+
+// Dibuja una línea vertical punteada sobre el mes seleccionado en un gráfico.
+const selectedMonthPlugin = {
+  id: 'selectedMonthLine',
+  afterDatasetsDraw(chart) {
+    if (!selectedMonth) return;
+    const label = mLabel(selectedMonth);
+    const idx = chart.data.labels.indexOf(label);
+    if (idx < 0) return;
+    const meta = chart.getDatasetMeta(0);
+    const pt = meta.data[idx];
+    if (!pt) return;
+    const {top, bottom} = chart.chartArea;
+    const ctx2 = chart.ctx;
+    ctx2.save();
+    ctx2.strokeStyle = '#1F3864';
+    ctx2.lineWidth = 2;
+    ctx2.setLineDash([5, 3]);
+    ctx2.beginPath();
+    ctx2.moveTo(pt.x, top);
+    ctx2.lineTo(pt.x, bottom);
+    ctx2.stroke();
+    ctx2.restore();
+  }
+};
 
 // =====================================================================
 // KPI CARDS
@@ -518,9 +559,15 @@ function renderCPOMix(rows) {
   charts.cpo = new Chart(ctx, {
     type: 'bar',
     data: {labels, datasets},
+    plugins: [selectedMonthPlugin],
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: {mode: 'index', intersect: false},
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const row = rows[elements[0].index];
+        if (row) selectMonth(row.month);
+      },
       plugins: {
         legend: {position: 'top', labels: {boxWidth: 12, font: {size: 11}}},
         tooltip: {callbacks: {label: c => {
@@ -615,10 +662,15 @@ function renderCostBar(rows) {
   const ctx = document.getElementById('chartCost').getContext('2d');
   charts.cost = new Chart(ctx, {
     type: 'bar',
-    plugins: [stackPctPlugin],
+    plugins: [stackPctPlugin, selectedMonthPlugin],
     data: {labels, datasets},
     options: {
       responsive:true, maintainAspectRatio:false,
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const row = rows[elements[0].index];
+        if (row) selectMonth(row.month);
+      },
       plugins: {
         legend: {position:'top', labels:{boxWidth:12, font:{size:11}}},
         tooltip: {callbacks:{label: c => `${c.dataset.label}: ${fmtM(c.raw*1e6)}`}},
@@ -1249,8 +1301,7 @@ function updateDaily() {
 // =====================================================================
 // FULL TABLE
 // =====================================================================
-function renderFullTable() {
-  const rows = getFiltered();
+function renderFullTable(rows) {
   const mc = cpoCols();
   let prevYear = null;
   let html = `<thead><tr>
@@ -1264,9 +1315,12 @@ function renderFullTable() {
 
   rows.forEach(r => {
     const yr = r.month.slice(0,4);
-    const sep = prevYear && yr !== prevYear ? ' class="year-sep"' : '';
+    const classes = [];
+    if (prevYear && yr !== prevYear) classes.push('year-sep');
+    if (r.month === selectedMonth) classes.push('selected');
     prevYear = yr;
-    html += `<tr${sep}>
+    const clsAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
+    html += `<tr${clsAttr} data-month="${r.month}" onclick="selectMonth('${r.month}')">
       <td>${mLabel(r.month)}</td>
       <td>${fmtM(r.fijo_cl)}</td><td>${fmtM(r.var_cl)}</td>
       <td>${fmt(r.ped_lp)}</td><td>${fmt(r.ped_pa)}</td><td>${fmt(r.ped_cl)}</td>
