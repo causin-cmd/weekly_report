@@ -177,9 +177,9 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
   </div>
   <div class="fg">
     <span class="fl">Desde</span>
-    <select id="sel-from" onchange="updateAll()"></select>
+    <select id="sel-from" onchange="onGeneralFilterChange()"></select>
     <span class="fl">Hasta</span>
-    <select id="sel-to" onchange="updateAll()"></select>
+    <select id="sel-to" onchange="onGeneralFilterChange()"></select>
   </div>
 </div>
 
@@ -241,14 +241,6 @@ footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);border-t
 <div class="tab-pane" id="tab-diario">
 <div class="main">
   <div class="daily-filters">
-    <div class="fg"><label>Desde</label> <select id="d-from" onchange="updateDaily()"></select></div>
-    <div class="fg"><label>Hasta</label> <select id="d-to" onchange="updateDaily()"></select></div>
-    <div class="fg">
-      <span class="fl">Bodega</span>
-      <span class="chip lp active" id="dchip-lp" onclick="toggleDailyBodega('lp')">Las Parcelas</span>
-      <span class="chip pa active" id="dchip-pa" onclick="toggleDailyBodega('pa')">Parque Arauco</span>
-      <span class="chip cl active" id="dchip-cl" onclick="toggleDailyBodega('cl')">Total CL</span>
-    </div>
     <div class="fg">
       <span class="fl">Ver</span>
       <div class="btn-g">
@@ -325,7 +317,6 @@ let activeBodegas = new Set(['lp','pa','cl']);
 let activeMetrica = 'tot';   // tot | fij | var
 let activeTab = 'mensual';
 let activeDailyMetrica = 'cpo';
-let activeDailyBodegas = new Set(['lp','pa','cl']);
 
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const fmtM = n => n == null ? '—' : (n/1e6).toFixed(2).replace('.',',') + ' MM';
@@ -340,27 +331,18 @@ const mLabel = m => { const [y,mo] = m.split('-'); return MESES[+mo-1]+'-'+y.sli
 document.addEventListener('DOMContentLoaded', () => {
   const realMonths = RAW.monthly.filter(r => r.has_real).map(r => r.month);
   const allMonths  = RAW.monthly.map(r => r.month);
+  const dailyMonths = [...new Set(RAW.daily.map(r => r.month))].sort();
 
-  // Period selects (monthly tab)
+  // Period selects (general — feeds Análisis Mensual + CPO Diario)
+  const filterMonths = [...new Set([...realMonths, ...dailyMonths])].sort();
   const sf = document.getElementById('sel-from');
   const st = document.getElementById('sel-to');
-  realMonths.forEach(m => {
+  filterMonths.forEach(m => {
     sf.add(new Option(mLabel(m), m));
     st.add(new Option(mLabel(m), m));
   });
   sf.value = realMonths[0];
   st.value = realMonths[realMonths.length-1];
-
-  // Daily selects
-  const dailyMonths = [...new Set(RAW.daily.map(r => r.month))].sort();
-  const df = document.getElementById('d-from');
-  const dt = document.getElementById('d-to');
-  dailyMonths.forEach(m => {
-    df.add(new Option(mLabel(m), m));
-    dt.add(new Option(mLabel(m), m));
-  });
-  df.value = dailyMonths[dailyMonths.length-3] || dailyMonths[0];
-  dt.value = dailyMonths[dailyMonths.length-1];
 
   // Badge
   const lastReal = realMonths[realMonths.length-1];
@@ -382,6 +364,11 @@ function toggleBodega(b) {
   document.getElementById('chip-'+b).classList.toggle('active', activeBodegas.has(b));
   updateAll();
   renderForecast();
+  updateDaily();
+}
+function onGeneralFilterChange() {
+  updateAll();
+  updateDaily();
 }
 function setMetrica(m) {
   activeMetrica = m;
@@ -399,21 +386,6 @@ function showTab(t) {
 function setDailyMetrica(m) {
   activeDailyMetrica = m;
   ['cpo','ped','cost'].forEach(x => document.getElementById('dbtn-'+x).classList.toggle('active', x===m));
-  updateDaily();
-}
-function toggleDailyBodega(b) {
-  if (activeDailyBodegas.has(b) && activeDailyBodegas.size === 1) return; // no dejar vacío
-  if (b === 'cl') {
-    // CL es el total — seleccionarlo desactiva LP y PA
-    activeDailyBodegas = new Set(['cl']);
-  } else {
-    // Seleccionar LP o PA desactiva CL (se ven bodegas individuales)
-    if (activeDailyBodegas.has('cl')) activeDailyBodegas.delete('cl');
-    if (activeDailyBodegas.has(b)) activeDailyBodegas.delete(b);
-    else activeDailyBodegas.add(b);
-    if (activeDailyBodegas.size === 0) activeDailyBodegas.add(b); // no dejar vacío
-  }
-  ['lp','pa','cl'].forEach(x => document.getElementById('dchip-'+x).classList.toggle('active', activeDailyBodegas.has(x)));
   updateDaily();
 }
 
@@ -1124,8 +1096,8 @@ function renderForecastBloques(fcst, b0) {
 // DAILY CHART
 // =====================================================================
 function updateDaily() {
-  const from = document.getElementById('d-from').value;
-  const to   = document.getElementById('d-to').value;
+  const from = document.getElementById('sel-from').value;
+  const to   = document.getElementById('sel-to').value;
   const IRRENUNCIABLES = new Set(['01-01','05-01','09-18','09-19','12-25']);
   const rows = RAW.daily.filter(r => r.month >= from && r.month <= to && !IRRENUNCIABLES.has(r.date.slice(5)));
   destroyChart('daily');
@@ -1134,7 +1106,7 @@ function updateDaily() {
     {b:'lp', label:'Las Parcelas', color:COLORS.lp},
     {b:'pa', label:'Parque Arauco', color:COLORS.pa},
     {b:'cl', label:'Total CL', color:COLORS.cl},
-  ].filter(c => activeDailyBodegas.has(c.b));
+  ].filter(c => activeBodegas.has(c.b));
 
   let dm = activeDailyMetrica; // cpo | ped | cost
   const field = b => dm === 'cpo' ? `${b}_cpo` : dm === 'ped' ? `${b}_ped` : `${b}_tot`;
@@ -1169,7 +1141,7 @@ function updateDaily() {
     const acumLabels = dm === 'cpo'
       ? [{b:'lp', label:'LP CPO Acum', color:'#2E75B6'}, {b:'pa', label:'PA CPO Acum', color:'#C55A11'}, {b:'cl', label:'CL CPO Acum', color:'#1F3864'}]
       : [{b:'lp', label:'LP Ped Acum', color:'#2E75B6'}, {b:'pa', label:'PA Ped Acum', color:'#C55A11'}, {b:'cl', label:'CL Ped Acum', color:'#1F3864'}];
-    acumLabels.filter(c => activeDailyBodegas.has(c.b)).forEach(c => {
+    acumLabels.filter(c => activeBodegas.has(c.b)).forEach(c => {
       datasets.push({
         label: c.label,
         data: trimmedRows.map(r => { const v=r[c.b+acumField]; return (v&&v>0)?v:null; }),
@@ -1210,7 +1182,7 @@ function updateDaily() {
       {b:'lp', label:'LP Fcst Acum', color:'#2E75B6'},
       {b:'pa', label:'PA Fcst Acum', color:'#C55A11'},
       {b:'cl', label:'CL Fcst Acum', color:'#1F3864'},
-    ].filter(c => activeDailyBodegas.has(c.b));
+    ].filter(c => activeBodegas.has(c.b));
     // Build running monthly cumulative for each bodega
     fcstCfg.forEach(c => {
       let cumMonth = ''; let cumSum = 0;
