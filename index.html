@@ -1259,9 +1259,8 @@ function updateDaily() {
       datasets.push({
         label: c.label,
         data: trimmedRows.map(r => { const v=r[c.b+acumField]; return (v&&v>0)?v:null; }),
-        borderColor: c.color, backgroundColor: 'transparent',
-        borderWidth: 2, borderDash: [6,3], pointRadius: 4, pointHoverRadius: 7,
-        pointBackgroundColor: c.color, pointBorderColor: '#fff', pointBorderWidth: 1.5,
+        borderColor: c.color, backgroundColor: c.color+'22',
+        borderWidth: 2, borderDash: [6,3], pointRadius: 1.5, pointHoverRadius: 5,
         tension:.3, fill: false, spanGaps: false,
         yAxisID: (dm==='ped') ? 'y1' : 'y',
       });
@@ -1282,9 +1281,8 @@ function updateDaily() {
         datasets.push({
           label: `${c.label} Proyectado`,
           data: proyData,
-          borderColor: c.color, backgroundColor: 'transparent',
-          borderWidth: 1.5, borderDash: [3,3], pointRadius: 4, pointHoverRadius: 7,
-          pointBackgroundColor: c.color, pointBorderColor: '#fff', pointBorderWidth: 1.5,
+          borderColor: c.color, backgroundColor: c.color+'22',
+          borderWidth: 1.5, borderDash: [3,3], pointRadius: 1.5, pointHoverRadius: 5,
           tension: 0, fill: false, spanGaps: false,
           yAxisID: 'y',
         });
@@ -1313,9 +1311,8 @@ function updateDaily() {
         datasets.push({
           label: c.label,
           data: fcstAcum,
-          borderColor: c.color, backgroundColor: 'transparent',
-          borderWidth: 2, borderDash: [3,3], pointRadius: 4, pointHoverRadius: 7,
-          pointBackgroundColor: c.color, pointBorderColor: '#fff', pointBorderWidth: 1.5,
+          borderColor: c.color, backgroundColor: c.color+'22',
+          borderWidth: 2, borderDash: [3,3], pointRadius: 1.5, pointHoverRadius: 5,
           tension: 0.3, fill: false, spanGaps: false,
           yAxisID: 'y1',
         });
